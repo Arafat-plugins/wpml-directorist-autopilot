@@ -111,29 +111,8 @@ function showLanguageSelector() {
       select.appendChild(option);
     });
 
-    // Explicitly set the value to ensure it displays
+    // Set the selected value
     select.value = defaultLanguage;
-    
-    // Force update display (for browser compatibility)
-    const defaultIndex = Array.from(select.options).findIndex(opt => opt.value === defaultLanguage);
-    if (defaultIndex >= 0) {
-      select.selectedIndex = defaultIndex;
-    }
-    
-    // Ensure the select field shows the selected value visually
-    select.addEventListener('change', function() {
-      // Force visual update
-      this.style.color = '#333';
-      console.log('Language changed to:', this.value, this.options[this.selectedIndex].textContent);
-    });
-    
-    // Initial visual update
-    setTimeout(() => {
-      select.style.color = '#333';
-      if (select.selectedIndex >= 0) {
-        console.log('Selected language displayed:', select.options[select.selectedIndex].textContent);
-      }
-    }, 10);
 
     // Buttons container
     const buttons = document.createElement('div');
@@ -207,6 +186,103 @@ function showLanguageSelector() {
   });
 }
 
+// ========= LANGUAGE CHANGE BUTTON =========
+let languageChangeBtn = null;
+
+function createLanguageChangeButton() {
+  // Remove existing button if any
+  if (languageChangeBtn) {
+    languageChangeBtn.remove();
+  }
+
+  // Create floating button
+  languageChangeBtn = document.createElement('div');
+  languageChangeBtn.id = 'wpml-language-changer';
+  languageChangeBtn.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #0073aa 0%, #005a87 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 25px;
+    box-shadow: 0 4px 12px rgba(0, 115, 170, 0.4);
+    z-index: 999998;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    animation: slideUp 0.3s ease;
+  `;
+
+  // Add animation
+  if (!document.getElementById('wpml-language-changer-styles')) {
+    const style = document.createElement('style');
+    style.id = 'wpml-language-changer-styles';
+    style.textContent = `
+      @keyframes slideUp {
+        from {
+          transform: translateY(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      #wpml-language-changer:hover {
+        transform: scale(1.05) translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 115, 170, 0.5);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Get current language name
+  const currentLang = TARGET_LANGUAGE 
+    ? LANGUAGES.find(l => l.code === TARGET_LANGUAGE)?.name || TARGET_LANGUAGE.toUpperCase()
+    : 'Select Language';
+
+  // Icon
+  const icon = document.createElement('span');
+  icon.textContent = '🌐';
+  icon.style.fontSize = '18px';
+
+  // Text
+  const text = document.createElement('span');
+  text.textContent = currentLang;
+
+  // Click handler
+  languageChangeBtn.onclick = async () => {
+    try {
+      const newLang = await showLanguageSelector();
+      TARGET_LANGUAGE = newLang;
+      updateLanguageChangeButton();
+      console.log('🌐 Language changed to:', newLang);
+  } catch (err) {
+    // User cancelled
+  }
+  };
+
+  languageChangeBtn.appendChild(icon);
+  languageChangeBtn.appendChild(text);
+  document.body.appendChild(languageChangeBtn);
+}
+
+function updateLanguageChangeButton() {
+  if (languageChangeBtn && TARGET_LANGUAGE) {
+    const currentLang = LANGUAGES.find(l => l.code === TARGET_LANGUAGE)?.name || TARGET_LANGUAGE.toUpperCase();
+    const textSpan = languageChangeBtn.querySelector('span:last-child');
+    if (textSpan) {
+      textSpan.textContent = currentLang;
+    }
+  }
+}
+
 // ========= INITIALIZE LANGUAGE =========
 let TARGET_LANGUAGE = null;
 
@@ -215,9 +291,9 @@ let TARGET_LANGUAGE = null;
   try {
     TARGET_LANGUAGE = await showLanguageSelector();
     console.log('🌐 Target language selected:', TARGET_LANGUAGE);
+    createLanguageChangeButton();
   } catch (err) {
-    console.log('ℹ️ Language selection will be shown when you click the plus button');
-    // Don't show alert, just let user select when they click plus button
+    // User cancelled, will show on plus button click
   }
 })();
 
@@ -300,35 +376,6 @@ async function translateText(text) {
   }
 }
 
-// ========= WAIT FOR ELEMENT =========
-function waitForElement(selector, timeout = 5000) {
-  return new Promise((resolve, reject) => {
-    const element = document.querySelector(selector);
-    if (element) {
-      resolve(element);
-      return;
-    }
-
-    const observer = new MutationObserver(() => {
-      const element = document.querySelector(selector);
-      if (element) {
-        observer.disconnect();
-        resolve(element);
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    setTimeout(() => {
-      observer.disconnect();
-      reject(new Error(`Timeout waiting for ${selector}`));
-    }, timeout);
-  });
-}
-
 // ========= FIND TEXTAREAS NEAR CLICKED ELEMENT =========
 function findTextareasNearElement(element) {
   // Strategy 1: Find in closest container (row, div, etc.)
@@ -397,6 +444,9 @@ function triggerWPMLChange(textarea) {
   textarea.value = textarea.value; // Force update
 }
 
+// ========= GLOBAL OBSERVER MANAGEMENT =========
+let activeObserver = null;
+
 // ========= CORE =========
 document.addEventListener('click', async (e) => {
   
@@ -424,26 +474,38 @@ document.addEventListener('click', async (e) => {
     try {
       TARGET_LANGUAGE = await showLanguageSelector();
       console.log('🌐 Target language selected:', TARGET_LANGUAGE);
+      createLanguageChangeButton();
     } catch (err) {
       console.warn('⚠️ Language selection cancelled');
       return;
     }
   }
 
+  // Cleanup any existing observer from previous click
+  if (activeObserver) {
+    activeObserver.disconnect();
+    activeObserver = null;
+  }
+
   console.log('🔍 Plus button clicked, waiting for WPML UI...');
 
+  // Store the clicked plus button for this specific translation attempt
+  const clickedPlus = plus;
+  
   // Wait for WPML to inject UI with retry mechanism
   let attempts = 0;
-  const maxAttempts = 10;
+  const maxAttempts = 15; // Increased attempts
   const delay = 200;
+  let observer = null; // Store observer reference
+  let isTranslationComplete = false; // Track if translation completed
 
   const tryTranslate = async () => {
     attempts++;
     
     console.log(`🔄 Attempt ${attempts}/${maxAttempts} - Searching for textareas...`);
     
-    // Find textareas near the clicked element
-    const textareas = findTextareasNearElement(plus);
+    // Find textareas near the clicked element (use stored reference)
+    const textareas = findTextareasNearElement(clickedPlus);
     
     console.log(`📝 Found ${textareas.length} textarea(s)`);
     
@@ -452,8 +514,6 @@ document.addEventListener('click', async (e) => {
         setTimeout(tryTranslate, delay);
       } else {
         console.error('❌ Could not find any textareas');
-        console.log('💡 Debug: Plus element:', plus);
-        console.log('💡 Debug: Plus parent:', plus.parentElement);
       }
       return;
     }
@@ -461,10 +521,28 @@ document.addEventListener('click', async (e) => {
     // Find original (has value) - usually the first one or one with content
     const original = textareas.find(ta => ta.value.trim()) || textareas[0];
     
-    // Find target (empty) - usually the last one or one without content
+    // Find target (MUST be empty) - prioritize empty textareas in the same row/container
     // WPML typically shows original first, then translation textarea appears after plus click
-    const target = textareas.find(ta => !ta.value.trim() && ta !== original) || 
-                   (textareas.length > 1 ? textareas[textareas.length - 1] : null);
+    // IMPORTANT: Only use EMPTY textareas as target
+    let target = textareas.find(ta => {
+      const isEmpty = !ta.value.trim();
+      const isNotOriginal = ta !== original;
+      return isEmpty && isNotOriginal;
+    });
+    
+    // If no empty textarea found, try to find the last textarea if it's empty
+    if (!target && textareas.length > 1) {
+      const lastTextarea = textareas[textareas.length - 1];
+      // ONLY use if it's empty AND different from original
+      if (!lastTextarea.value.trim() && lastTextarea !== original) {
+        target = lastTextarea;
+      }
+    }
+    
+    // Debug log
+    if (!target) {
+      console.log('⚠️ No empty target textarea found');
+    }
 
     if (!original) {
       if (attempts < maxAttempts) {
@@ -480,11 +558,6 @@ document.addEventListener('click', async (e) => {
         setTimeout(tryTranslate, delay);
       } else {
         console.error('❌ Could not find target textarea');
-        console.log('💡 Debug: Available textareas:', textareas.map((ta, i) => ({
-          index: i,
-          hasValue: !!ta.value.trim(),
-          value: ta.value.substring(0, 30)
-        })));
       }
       return;
     }
@@ -495,8 +568,8 @@ document.addEventListener('click', async (e) => {
       return;
     }
 
+    // Skip if target already has text
     if (target.value.trim()) {
-      console.log('ℹ️ Target already has text, skipping');
       return;
     }
 
@@ -521,30 +594,71 @@ document.addEventListener('click', async (e) => {
         target.style.backgroundColor = '';
       }, 2000);
       
+      // Mark translation as complete and cleanup
+      isTranslationComplete = true;
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+        activeObserver = null;
+      }
+      return;
+      
     } catch (err) {
-      console.error('❌ Translation failed', err);
-      alert(`Translation failed: ${err.message}`);
+      if (attempts >= maxAttempts) {
+        alert(`Translation failed: ${err.message}`);
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+      }
     }
   };
 
   // Use MutationObserver to watch for textarea injection
-  const observer = new MutationObserver((mutations) => {
-    // Check if new textareas were added
+  observer = new MutationObserver((mutations) => {
+    // Don't process if translation already completed or exceeded max attempts
+    if (isTranslationComplete || attempts >= maxAttempts) {
+      return;
+    }
+    
+    // Check if new textareas were added near the clicked element
     const hasNewTextareas = mutations.some(mutation => {
       return Array.from(mutation.addedNodes).some(node => {
         if (node.nodeType === 1) { // Element node
-          return node.tagName === 'TEXTAREA' || node.querySelector('textarea');
+          const isTextarea = node.tagName === 'TEXTAREA';
+          const hasTextarea = node.querySelector && node.querySelector('textarea');
+          
+          // Check if new textarea is near the clicked plus button
+          if (isTextarea || hasTextarea) {
+            const row = clickedPlus.closest('tr, .row, [class*="row"], [class*="string"], [class*="translation"], tbody, table');
+            if (row) {
+              // Check if new textarea is in same row or adjacent
+              const isInRow = row.contains(node);
+              const isInNextRow = row.nextElementSibling?.contains(node);
+              const isInParent = row.parentElement?.contains(node);
+              
+              if (isInRow || isInNextRow || isInParent) {
+                return true;
+              }
+            }
+          }
         }
         return false;
       });
     });
     
-    if (hasNewTextareas) {
-      console.log('👀 New textarea detected, retrying...');
-      tryTranslate();
+    if (hasNewTextareas && !isTranslationComplete) {
+      setTimeout(() => {
+        if (attempts < maxAttempts && !isTranslationComplete) {
+          tryTranslate();
+        }
+      }, 50);
     }
   });
 
+  // Store observer globally for cleanup
+  activeObserver = observer;
+  
   // Observe the document for changes
   observer.observe(document.body, {
     childList: true,
@@ -553,12 +667,18 @@ document.addEventListener('click', async (e) => {
 
   // Start trying immediately
   setTimeout(() => {
-    tryTranslate();
-    
-    // Stop observing after max attempts
-    setTimeout(() => {
-      observer.disconnect();
-    }, maxAttempts * delay + 1000);
+    if (!isTranslationComplete) {
+      tryTranslate();
+    }
   }, 100);
+  
+  // Cleanup observer after max attempts
+  setTimeout(() => {
+    if (observer && !isTranslationComplete) {
+      observer.disconnect();
+      observer = null;
+      activeObserver = null;
+    }
+  }, maxAttempts * delay + 3000);
 
 });
