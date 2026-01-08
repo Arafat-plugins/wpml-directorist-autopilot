@@ -313,7 +313,12 @@ async function translateWithMyMemory(text) {
     throw new Error(`MyMemory Error: ${data.responseData?.errorMessage || 'Unknown error'}`);
   }
   
-  return data.responseData.translatedText || '';
+  const translated = data.responseData.translatedText || '';
+  if (!translated.trim()) {
+    throw new Error('MyMemory returned empty translation');
+  }
+  
+  return translated.trim();
 }
 
 // ========= FREE API - Main Function =========
@@ -343,9 +348,10 @@ async function translateText(text) {
 
     if (res.ok) {
       const data = await res.json();
-      if (data.translatedText) {
+      if (data.translatedText && data.translatedText.trim()) {
+        const translated = data.translatedText.trim();
         console.log('✅ LibreTranslate success');
-        return data.translatedText;
+        return translated;
       }
     }
 
@@ -368,8 +374,12 @@ async function translateText(text) {
   try {
     console.log('🔄 Trying MyMemory API as fallback...');
     const translated = await translateWithMyMemory(text);
-    console.log('✅ MyMemory success');
-    return translated;
+    if (translated && translated.trim()) {
+      console.log('✅ MyMemory success');
+      return translated.trim();
+    } else {
+      throw new Error('MyMemory returned empty translation');
+    }
   } catch (err) {
     console.error('❌ MyMemory also failed:', err.message);
     throw new Error(`All translation APIs failed. Last error: ${err.message}`);
@@ -428,6 +438,46 @@ function findTextareasNearElement(element) {
   }
 
   return allTextareas;
+}
+
+// ========= SIMILARITY CALCULATION =========
+function calculateSimilarity(str1, str2) {
+  if (str1 === str2) return 1.0;
+  if (str1.length === 0 || str2.length === 0) return 0.0;
+
+  // Simple Levenshtein distance based similarity
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  // Calculate edit distance
+  const editDistance = levenshteinDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function levenshteinDistance(str1, str2) {
+  const matrix = [];
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[str2.length][str1.length];
 }
 
 // ========= TRIGGER WPML EVENTS =========
@@ -578,12 +628,35 @@ document.addEventListener('click', async (e) => {
     try {
       const translated = await translateText(originalText);
       
-      if (!translated) {
+      // Validate translation
+      if (!translated || !translated.trim()) {
         console.error('❌ Translation returned empty');
         return;
       }
 
-      target.value = translated;
+      const translatedText = translated.trim();
+      const originalTextLower = originalText.toLowerCase().trim();
+      const translatedTextLower = translatedText.toLowerCase().trim();
+
+      // Check if translation is same as original (case-insensitive)
+      if (originalTextLower === translatedTextLower) {
+        console.warn('⚠️ Translation is same as original text, skipping paste');
+        console.log('Original:', originalText);
+        console.log('Translated:', translatedText);
+        return;
+      }
+
+      // Check if translation is too similar (more than 90% same)
+      if (translatedTextLower.length > 0 && originalTextLower.length > 0) {
+        const similarity = calculateSimilarity(originalTextLower, translatedTextLower);
+        if (similarity > 0.9) {
+          console.warn('⚠️ Translation too similar to original, skipping paste');
+          console.log('Similarity:', (similarity * 100).toFixed(1) + '%');
+          return;
+        }
+      }
+
+      target.value = translatedText;
       triggerWPMLChange(target);
       
       console.log('✅ Translation complete!');
