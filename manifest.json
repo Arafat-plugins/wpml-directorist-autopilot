@@ -1,0 +1,20 @@
+{
+    "manifest_version": 3,
+    "name": "WPML Directorist Autopilot (Free API)",
+    "version": "1.0.0",
+    "description": "Auto translate Directorist WPML strings using free API",
+    "permissions": ["activeTab", "scripting"],
+    "host_permissions": [
+      "*://*/wp-admin/*",
+      "https://libretranslate.com/*"
+    ],
+    "content_scripts": [
+      {
+        "matches": [
+          "*://*/wp-admin/admin.php?page=wpml-string-translation*"
+        ],
+        "js": ["content.js"]
+      }
+    ]
+  }
+  
