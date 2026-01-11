@@ -1,13 +1,20 @@
 {
     "manifest_version": 3,
-    "name": "WPML Autopilot (Free API)",
-    "version": "1.0.0",
-    "description": "Auto translate Directorist WPML strings using free API",
-    "permissions": ["activeTab", "scripting"],
+    "name": "WPML Autopilot",
+    "version": "1.1.0",
+    "description": "Auto translate Directorist WPML strings with free or paid API",
+    "author": "Ventro",
+    "permissions": ["activeTab", "scripting", "storage"],
     "host_permissions": [
       "*://*/wp-admin/*",
-      "https://libretranslate.com/*"
+      "https://api.mymemory.translated.net/*",
+      "https://libretranslate.de/*",
+      "https://translate.googleapis.com/*"
     ],
+    "action": {
+      "default_popup": "popup.html",
+      "default_title": "WPML Autopilot Settings"
+    },
     "content_scripts": [
       {
         "matches": [
