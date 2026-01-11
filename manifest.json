@@ -13,7 +13,16 @@
         "matches": [
           "*://*/wp-admin/admin.php?page=wpml-string-translation*"
         ],
-        "js": ["content.js"]
+        "js": [
+          "js/constants.js",
+          "js/storage.js",
+          "js/language-selector.js",
+          "js/language-button.js",
+          "js/translation-api.js",
+          "js/dom-helpers.js",
+          "js/main.js",
+          "content.js"
+        ]
       }
     ]
   }
