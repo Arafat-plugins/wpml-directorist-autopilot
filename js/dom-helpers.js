@@ -1,55 +1,58 @@
 // ========= FIND TEXTAREAS NEAR CLICKED ELEMENT =========
 function findTextareasNearElement(element) {
-  // Strategy 1: Find in closest container (row, div, etc.)
-  let container = element.closest('tr, .row, [class*="row"], [class*="string"], [class*="translation"], tbody, table');
+  // Strategy 1: Find the closest row/container - be more specific
+  let container = element.closest('tr, .row, [class*="row"], [class*="string"], [class*="translation"]');
   
   if (!container) {
-    // If no container, search from parent
+    container = element.closest('tbody, table, [class*="table"], [class*="list"]');
+  }
+  
+  if (!container) {
     container = element.parentElement;
   }
 
-  // Strategy 2: Search in container and nearby elements
   let allTextareas = [];
   
   if (container) {
-    // Get all textareas in container
-    allTextareas = Array.from(container.querySelectorAll('textarea'));
+    // First, try to find textareas in the exact same row (most specific)
+    const exactRow = element.closest('tr, [class*="row"]');
+    if (exactRow) {
+      const rowTextareas = Array.from(exactRow.querySelectorAll('textarea'));
+      if (rowTextareas.length >= 1) {
+        allTextareas = rowTextareas;
+      }
+    }
     
-    // Also check siblings
-    const siblings = [
-      container.previousElementSibling,
-      container.nextElementSibling,
-      container.parentElement?.previousElementSibling,
-      container.parentElement?.nextElementSibling
-    ].filter(Boolean);
-    
-    siblings.forEach(sibling => {
-      const siblingTextareas = sibling.querySelectorAll('textarea');
-      allTextareas = allTextareas.concat(Array.from(siblingTextareas));
-    });
-  }
-
-  // Strategy 3: If still not found, search entire page but prioritize nearby
-  if (allTextareas.length < 2) {
-    const pageTextareas = Array.from(document.querySelectorAll('textarea'));
-    
-    // Find textareas near the clicked element (within same section/container)
-    const clickedRect = element.getBoundingClientRect();
-    const nearbyTextareas = pageTextareas.filter(ta => {
-      const taRect = ta.getBoundingClientRect();
-      // Check if textarea is in similar vertical position (within 500px)
-      return Math.abs(taRect.top - clickedRect.top) < 500;
-    });
-    
-    if (nearbyTextareas.length >= 2) {
-      allTextareas = nearbyTextareas;
-    } else if (pageTextareas.length >= 2) {
-      // Fallback: use all textareas on page
-      allTextareas = pageTextareas;
+    // If we didn't find enough in the exact row, search in the container
+    if (allTextareas.length < 2) {
+      const containerTextareas = Array.from(container.querySelectorAll('textarea'));
+      if (containerTextareas.length > 0) {
+        allTextareas = containerTextareas;
+      }
     }
   }
 
-  return allTextareas;
+  // Strategy 2: If still not found, use positional search (more precise)
+  if (allTextareas.length < 2) {
+    const clickedRect = element.getBoundingClientRect();
+    const pageTextareas = Array.from(document.querySelectorAll('textarea'));
+    
+    // Find textareas very close to the clicked element (within same row - 200px)
+    const nearbyTextareas = pageTextareas.filter(ta => {
+      const taRect = ta.getBoundingClientRect();
+      const verticalDistance = Math.abs(taRect.top - clickedRect.top);
+      const horizontalDistance = Math.abs(taRect.left - clickedRect.left);
+      // Same row: similar Y position and reasonable X distance
+      return verticalDistance < 200 && horizontalDistance < 1000;
+    });
+    
+    if (nearbyTextareas.length >= 1) {
+      allTextareas = nearbyTextareas;
+    }
+  }
+
+  // Remove duplicates and return
+  return Array.from(new Set(allTextareas));
 }
 
 // ========= TRIGGER WPML EVENTS =========

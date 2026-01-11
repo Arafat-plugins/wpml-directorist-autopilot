@@ -73,25 +73,38 @@ document.addEventListener('click', async (e) => {
       return;
     }
 
-    // Find original (has value) - usually the first one or one with content
-    const original = textareas.find(ta => ta.value.trim()) || textareas[0];
+    // Find original textarea (has text value)
+    // WPML shows original textarea first, then translation textarea appears after plus click
+    let original = textareas.find(ta => ta.value && ta.value.trim().length > 0);
     
-    // Find target (MUST be empty) - prioritize empty textareas in the same row/container
-    // WPML typically shows original first, then translation textarea appears after plus click
-    // IMPORTANT: Only use EMPTY textareas as target
-    let target = textareas.find(ta => {
-      const isEmpty = !ta.value.trim();
-      const isNotOriginal = ta !== original;
-      return isEmpty && isNotOriginal;
-    });
+    // If no textarea with value, use the first one (might be the original before it loads)
+    if (!original && textareas.length > 0) {
+      original = textareas[0];
+    }
     
-    // If no empty textarea found, try to find the last textarea if it's empty
-    if (!target && textareas.length > 1) {
-      const lastTextarea = textareas[textareas.length - 1];
-      // ONLY use if it's empty AND different from original
-      if (!lastTextarea.value.trim() && lastTextarea !== original) {
-        target = lastTextarea;
+    // Find target textarea (MUST be empty)
+    // Look for empty textareas, prioritizing those that appear after the original
+    let target = null;
+    
+    if (original) {
+      // Find all empty textareas that are not the original
+      const emptyTextareas = textareas.filter(ta => {
+        return !ta.value.trim() && ta !== original;
+      });
+      
+      if (emptyTextareas.length > 0) {
+        // Prefer textarea that comes after the original in DOM order
+        const originalIndex = textareas.indexOf(original);
+        const afterOriginal = emptyTextareas.find(ta => {
+          const taIndex = textareas.indexOf(ta);
+          return taIndex > originalIndex;
+        });
+        
+        target = afterOriginal || emptyTextareas[0];
       }
+    } else {
+      // No original found, use first empty textarea
+      target = textareas.find(ta => !ta.value.trim());
     }
     
     // Debug log
